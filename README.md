@@ -8,6 +8,12 @@ beeldvoorbewerking voor betere resultaten.
 ## Functies
 
 - **Afbeeldingen én PDF's**: PNG, JPG, TIFF (ook multi-page), BMP, GIF, WebP en PDF.
+- **Twee OCR-engines, drie standen**:
+  - *Automatisch* — draait Tesseract én EasyOCR en houdt per pagina het
+    resultaat met de hoogste betrouwbaarheid over (nauwkeurigst, trager);
+  - *Tesseract* — snel en licht, ideaal voor nette scans van gedrukte tekst;
+  - *EasyOCR* — neuraal model, sterker bij foto's en moeilijke scans
+    (optioneel; werkt pas na `pip install easyocr`).
 - **Drie talen, ook gecombineerd**: vink Nederlands, Engels en/of Frans aan;
   gemengde documenten worden met meerdere talen tegelijk herkend.
 - **Beste taal automatisch kiezen**: probeert elke aangevinkte taal ook apart
@@ -43,6 +49,18 @@ op Debian/Ubuntu: `sudo apt install python3-tk`).
 pip install -r requirements.txt
 ```
 
+### 3. Optioneel: EasyOCR (voor de standen *Automatisch* en *EasyOCR*)
+
+```bash
+pip install easyocr
+```
+
+Let op: dit haalt ook PyTorch binnen (een grote download). Bij het eerste
+gebruik downloadt EasyOCR bovendien eenmalig zijn modelbestanden (~100 MB);
+daarvoor is een internetverbinding nodig. Zonder GPU is EasyOCR duidelijk
+trager dan Tesseract — de tool werkt ook prima zonder deze stap, dan is
+alleen de Tesseract-engine beschikbaar.
+
 ## Gebruik
 
 ```bash
@@ -57,12 +75,14 @@ python -m ocr_tool
 ### Headless (zonder GUI)
 
 ```bash
-python -m ocr_tool scan.pdf foto.jpg --lang nld+fra
+python -m ocr_tool scan.pdf foto.jpg --lang nld+fra --engine auto
 ```
 
 ## Tips voor betere resultaten
 
 - Scan of fotografeer op **300 dpi of hoger**, recht van boven, bij goed licht.
+- **Nette scans?** Kies de engine *Tesseract*: vrijwel even nauwkeurig en een
+  stuk sneller. **Foto's of slechte scans?** Kies *EasyOCR* of *Automatisch*.
 - Vink alleen de talen aan die écht in het document staan — minder talen
   betekent doorgaans nauwkeurigere herkenning.
 - Kies **Binariseren** bij vergeelde of vlekkerige scans.

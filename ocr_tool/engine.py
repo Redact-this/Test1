@@ -5,6 +5,7 @@ Deze module is bewust GUI-vrij zodat ze ook headless (CLI/tests) bruikbaar is.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 from dataclasses import dataclass, field
 from typing import Callable, Iterable
@@ -22,6 +23,17 @@ LANGUAGES = {
     "eng": "Engels",
     "fra": "Frans",
 }
+
+# Beschikbare OCR-engines. "auto" draait Tesseract én EasyOCR en kiest het
+# resultaat met de hoogste betrouwbaarheid.
+ENGINES = {
+    "auto": "Automatisch (beide, beste resultaat)",
+    "tesseract": "Tesseract (snel)",
+    "easyocr": "EasyOCR (foto's, moeilijke scans)",
+}
+
+# EasyOCR gebruikt andere taalcodes dan Tesseract.
+EASYOCR_LANG_CODES = {"nld": "nl", "eng": "en", "fra": "fr"}
 
 # Page segmentation modes die in de praktijk het nuttigst zijn.
 PSM_MODES = {
@@ -54,6 +66,7 @@ class OcrOptions:
     # Probeer elke taal ook afzonderlijk en kies het betrouwbaarste resultaat.
     # Trager, maar nauwkeuriger bij accenten (bijv. ç, é) in gemengde selecties.
     auto_best: bool = False
+    engine: str = "tesseract"  # zie ENGINES
 
     @property
     def lang_string(self) -> str:
@@ -120,6 +133,16 @@ def ocr_image(image: Image.Image, options: OcrOptions) -> tuple[str, float]:
     if options.preprocess:
         image = preprocess_image(image, binarize=options.binarize)
 
+    if options.engine == "easyocr":
+        return _ocr_easyocr(image, options)
+    if options.engine == "auto" and easyocr_available():
+        tess = _ocr_tesseract(image, options)
+        easy = _ocr_easyocr(image, options)
+        return tess if tess[1] >= easy[1] else easy
+    return _ocr_tesseract(image, options)
+
+
+def _ocr_tesseract(image: Image.Image, options: OcrOptions) -> tuple[str, float]:
     langs = [l for l in options.languages if l in LANGUAGES]
     if options.auto_best and len(langs) > 1:
         candidates = [options.lang_string] + langs
@@ -170,6 +193,73 @@ def _ocr_single(image: Image.Image, lang: str, psm: int) -> tuple[str, float]:
     text = "\n".join(lines).strip()
     avg_conf = sum(confidences) / len(confidences) if confidences else -1.0
     return text, avg_conf
+
+
+def easyocr_available() -> bool:
+    """Is het optionele easyocr-pakket geïnstalleerd?"""
+    return importlib.util.find_spec("easyocr") is not None
+
+
+_easyocr_readers: dict[tuple[str, ...], object] = {}
+
+
+def _get_easyocr_reader(langs: list[str]):
+    """EasyOCR-reader per taalcombinatie; initialisatie is duur, dus cachen."""
+    import easyocr
+
+    codes = [EASYOCR_LANG_CODES[l] for l in langs if l in EASYOCR_LANG_CODES]
+    if not codes:
+        codes = list(EASYOCR_LANG_CODES.values())
+    key = tuple(sorted(codes))
+    if key not in _easyocr_readers:
+        try:
+            import torch
+
+            gpu = torch.cuda.is_available()
+        except Exception:
+            gpu = False
+        _easyocr_readers[key] = easyocr.Reader(codes, gpu=gpu, verbose=False)
+    return _easyocr_readers[key]
+
+
+def _ocr_easyocr(image: Image.Image, options: OcrOptions) -> tuple[str, float]:
+    """OCR via EasyOCR, met reconstructie van tekstregels uit de losse tekstvakken."""
+    if not easyocr_available():
+        raise RuntimeError(
+            "EasyOCR is niet geïnstalleerd. Installeer het met: pip install easyocr"
+        )
+    import numpy as np
+
+    reader = _get_easyocr_reader([l for l in options.languages if l in LANGUAGES])
+    detections = reader.readtext(np.asarray(image.convert("RGB")))
+    if not detections:
+        return "", -1.0
+
+    # Per tekstvak: (x-links, y-midden, hoogte, tekst, confidence)
+    items = []
+    for box, text, conf in detections:
+        xs = [point[0] for point in box]
+        ys = [point[1] for point in box]
+        items.append((min(xs), (min(ys) + max(ys)) / 2, max(ys) - min(ys), text, conf))
+
+    # Vakken waarvan de y-middens dicht bij elkaar liggen vormen samen één regel.
+    heights = sorted(item[2] for item in items)
+    line_tolerance = max(1.0, 0.6 * heights[len(heights) // 2])
+    items.sort(key=lambda item: item[1])
+    lines: list[list[tuple]] = []
+    for item in items:
+        if lines and abs(item[1] - lines[-1][-1][1]) <= line_tolerance:
+            lines[-1].append(item)
+        else:
+            lines.append([item])
+
+    text_lines = [
+        " ".join(word[3] for word in sorted(line, key=lambda word: word[0]))
+        for line in lines
+    ]
+    confidences = [item[4] for item in items]
+    avg_conf = 100.0 * sum(confidences) / len(confidences)
+    return "\n".join(text_lines).strip(), avg_conf
 
 
 def load_pdf_pages(path: str, dpi: int = 300) -> Iterable[Image.Image]:

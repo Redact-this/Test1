@@ -1,3 +1,5 @@
 pillow>=10.0
 pytesseract>=0.3.10
 pypdfium2>=4.0
+# Optioneel, voor de EasyOCR-engine (grote download, incl. PyTorch):
+# easyocr>=1.7

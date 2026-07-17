@@ -41,6 +41,8 @@ class OcrApp(tk.Tk):
         self.preprocess_var = tk.BooleanVar(value=True)
         self.binarize_var = tk.BooleanVar(value=False)
         self.auto_best_var = tk.BooleanVar(value=True)
+        self.easyocr_ok = engine.easyocr_available()
+        self.engine_var = tk.StringVar(value="auto" if self.easyocr_ok else "tesseract")
         self.psm_var = tk.StringVar(value="Automatisch")
         self.dpi_var = tk.IntVar(value=300)
 
@@ -72,6 +74,20 @@ class OcrApp(tk.Tk):
         ttk.Button(file_buttons, text="Verwijderen", command=self.remove_selected).pack(
             side="left", fill="x", expand=True, padx=(6, 0)
         )
+
+        engine_frame = ttk.LabelFrame(left, text="OCR-engine", padding=6)
+        engine_frame.pack(fill="x", pady=(8, 0))
+        for value, label in engine.ENGINES.items():
+            state = "normal" if (self.easyocr_ok or value == "tesseract") else "disabled"
+            ttk.Radiobutton(
+                engine_frame, text=label, value=value, variable=self.engine_var, state=state
+            ).pack(anchor="w")
+        if not self.easyocr_ok:
+            ttk.Label(
+                engine_frame,
+                text="EasyOCR niet geïnstalleerd:\npip install easyocr",
+                foreground="gray",
+            ).pack(anchor="w", pady=(4, 0))
 
         lang_frame = ttk.LabelFrame(left, text="Talen", padding=6)
         lang_frame.pack(fill="x", pady=(8, 0))
@@ -227,6 +243,7 @@ class OcrApp(tk.Tk):
             binarize=self.binarize_var.get(),
             pdf_dpi=self.dpi_var.get(),
             auto_best=self.auto_best_var.get(),
+            engine=self.engine_var.get(),
         )
 
     def start_ocr(self) -> None:

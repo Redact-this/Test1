@@ -13,7 +13,13 @@ from . import engine
 
 
 def run_cli(
-    paths: list[str], lang: str, psm: int, no_preprocess: bool, dpi: int, auto_best: bool
+    paths: list[str],
+    lang: str,
+    psm: int,
+    no_preprocess: bool,
+    dpi: int,
+    auto_best: bool,
+    ocr_engine: str,
 ) -> int:
     options = engine.OcrOptions(
         languages=lang.split("+"),
@@ -21,6 +27,7 @@ def run_cli(
         preprocess=not no_preprocess,
         pdf_dpi=dpi,
         auto_best=auto_best,
+        engine=ocr_engine,
     )
     exit_code = 0
     for path in paths:
@@ -50,11 +57,23 @@ def main() -> int:
         action="store_true",
         help="probeer elke taal apart en kies het betrouwbaarste resultaat",
     )
+    parser.add_argument(
+        "--engine",
+        choices=list(engine.ENGINES),
+        default="tesseract",
+        help="OCR-engine: auto draait Tesseract én EasyOCR en kiest het beste resultaat",
+    )
     args = parser.parse_args()
 
     if args.paths:
         return run_cli(
-            args.paths, args.lang, args.psm, args.no_preprocess, args.dpi, args.auto_best
+            args.paths,
+            args.lang,
+            args.psm,
+            args.no_preprocess,
+            args.dpi,
+            args.auto_best,
+            args.engine,
         )
 
     from .gui import main as gui_main
